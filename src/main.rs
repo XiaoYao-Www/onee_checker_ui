@@ -375,7 +375,7 @@ impl OneeUi {
 
     fn draw_executable_picker(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("oneechk.exe");
+            label_cell(ui, "oneechk.exe");
             path_text(ui, &mut self.exe_path, "選擇或貼上 oneechk.exe 路徑", 130.0);
             if ui.button("選擇程式…").clicked() {
                 self.pick_executable();
@@ -396,13 +396,16 @@ impl OneeUi {
 
     fn draw_input_picker(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(if self.command == CommandKind::Verify {
-                "校驗碼清單"
-            } else {
-                "輸入路徑"
-            });
+            label_cell(
+                ui,
+                if self.command == CommandKind::Verify {
+                    "校驗碼清單"
+                } else {
+                    "輸入路徑"
+                },
+            );
             let reserved = if self.command == CommandKind::Hash {
-                250.0
+                270.0
             } else {
                 130.0
             };
@@ -433,7 +436,7 @@ impl OneeUi {
 
     fn draw_output_picker(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("輸出檔案");
+            label_cell(ui, "輸出檔案");
             path_text(
                 ui,
                 &mut self.output_path,
@@ -469,11 +472,11 @@ impl OneeUi {
                 }
             });
         ui.horizontal(|ui| {
-            ui.label("可變長度（bytes）");
+            label_cell(ui, "可變長度");
             ui.add(
                 egui::TextEdit::singleline(&mut self.length)
-                    .desired_width(140.0)
-                    .hint_text("留空使用預設長度"),
+                    .desired_width(180.0)
+                    .hint_text("留空＝預設長度"),
             );
             ui.label("僅 SHAKE 與 BLAKE3 支援");
         });
@@ -482,11 +485,12 @@ impl OneeUi {
 
     fn draw_common_options(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("讀取緩衝區");
+            label_cell(ui, "讀取緩衝區");
             ui.add(egui::TextEdit::singleline(&mut self.buffer).desired_width(100.0));
             ui.label("例如 1M、4K、512B");
-            ui.add_space(16.0);
-            ui.label("執行緒數");
+        });
+        ui.horizontal(|ui| {
+            label_cell(ui, "執行緒數");
             ui.add(
                 egui::TextEdit::singleline(&mut self.threads)
                     .desired_width(80.0)
@@ -497,7 +501,7 @@ impl OneeUi {
 
     fn draw_verify_options(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("雜湊演算法");
+            label_cell(ui, "雜湊演算法");
             egui::ComboBox::from_id_salt("verify_algorithm")
                 .selected_text(&self.algorithm)
                 .show_ui(ui, |ui| {
@@ -516,7 +520,7 @@ impl OneeUi {
                 });
         });
         ui.horizontal(|ui| {
-            ui.label("驗證根目錄");
+            label_cell(ui, "驗證根目錄");
             path_text(ui, &mut self.root_path, "留空使用校驗碼檔所在目錄", 130.0);
             if ui.button("選擇目錄…").clicked() {
                 self.pick_root_folder();
@@ -527,7 +531,7 @@ impl OneeUi {
 
     fn draw_txt_options(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("大小格式");
+            label_cell(ui, "大小格式");
             egui::ComboBox::from_id_salt("tree_size")
                 .selected_text(&self.tree_size)
                 .show_ui(ui, |ui| {
@@ -616,45 +620,53 @@ impl eframe::App for OneeUi {
             self.status = format!("核心已安裝：{}", self.exe_path);
         }
         self.handle_dropped_files(&ctx);
-        ui.horizontal(|ui| {
-            ui.heading("Onee Checker 桌面工具");
-            ui.label("使用圖形介面執行 oneechk.exe");
-        });
-        ui.separator();
+        egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(22, 14))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Onee Checker 桌面工具");
+                    ui.add_space(6.0);
+                    ui.label("使用圖形介面執行 oneechk.exe");
+                });
+                ui.add_space(4.0);
+                ui.separator();
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            self.draw_executable_picker(ui);
-            ui.add_space(2.0);
-            self.installer.draw(ui);
-            ui.separator();
-            self.draw_command_tabs(ui);
-            ui.separator();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.draw_executable_picker(ui);
+                    ui.add_space(6.0);
+                    self.installer.draw(ui);
+                    ui.add_space(6.0);
+                    ui.separator();
+                    self.draw_command_tabs(ui);
+                    ui.separator();
+                    ui.add_space(2.0);
 
-            match self.command {
-                CommandKind::Hash => {
-                    self.draw_input_picker(ui);
-                    self.draw_output_picker(ui);
-                    self.draw_hash_options(ui);
-                }
-                CommandKind::Verify => {
-                    self.draw_input_picker(ui);
-                    self.draw_verify_options(ui);
-                }
-                CommandKind::Json => {
-                    self.draw_input_picker(ui);
-                    self.draw_output_picker(ui);
-                }
-                CommandKind::Txt => {
-                    self.draw_input_picker(ui);
-                    self.draw_output_picker(ui);
-                    self.draw_txt_options(ui);
-                }
-            }
+                    match self.command {
+                        CommandKind::Hash => {
+                            self.draw_input_picker(ui);
+                            self.draw_output_picker(ui);
+                            self.draw_hash_options(ui);
+                        }
+                        CommandKind::Verify => {
+                            self.draw_input_picker(ui);
+                            self.draw_verify_options(ui);
+                        }
+                        CommandKind::Json => {
+                            self.draw_input_picker(ui);
+                            self.draw_output_picker(ui);
+                        }
+                        CommandKind::Txt => {
+                            self.draw_input_picker(ui);
+                            self.draw_output_picker(ui);
+                            self.draw_txt_options(ui);
+                        }
+                    }
 
-            ui.separator();
-            self.draw_run_button(ui);
-            self.draw_results(ui);
-        });
+                    ui.separator();
+                    self.draw_run_button(ui);
+                    self.draw_results(ui);
+                });
+            });
 
         if self.is_running || self.installer.is_busy() {
             ctx.request_repaint_after(Duration::from_millis(100));
@@ -662,13 +674,50 @@ impl eframe::App for OneeUi {
     }
 }
 
+/// 表單列固定寬度的標籤，讓各列文字與輸入框左緣對齊。
+const LABEL_WIDTH: f32 = 150.0;
+
+pub(crate) fn label_cell(ui: &mut egui::Ui, text: &str) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(LABEL_WIDTH, ui.spacing().interact_size.y),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.label(text);
+        },
+    );
+}
+
 fn path_text(ui: &mut egui::Ui, value: &mut String, hint: &str, reserved: f32) {
-    let width = (ui.available_width() - reserved).max(140.0);
+    let width = (ui.available_width() - reserved).max(150.0);
     ui.add(
         egui::TextEdit::singleline(value)
             .desired_width(width)
             .hint_text(hint),
     );
+}
+
+/// 統一放大字體與間距，並保持與 Windows 顯示縮放相容。
+fn apply_style(ctx: &egui::Context) {
+    let mut style = ctx.global_style().as_ref().clone();
+    style
+        .text_styles
+        .insert(egui::TextStyle::Heading, egui::FontId::proportional(26.0));
+    style
+        .text_styles
+        .insert(egui::TextStyle::Body, egui::FontId::proportional(16.5));
+    style
+        .text_styles
+        .insert(egui::TextStyle::Button, egui::FontId::proportional(16.0));
+    style
+        .text_styles
+        .insert(egui::TextStyle::Small, egui::FontId::proportional(13.5));
+    style
+        .text_styles
+        .insert(egui::TextStyle::Monospace, egui::FontId::monospace(14.0));
+    style.spacing.item_spacing = egui::vec2(9.0, 7.0);
+    style.spacing.button_padding = egui::vec2(12.0, 6.0);
+    style.spacing.interact_size.y = 28.0;
+    ctx.set_global_style(style);
 }
 
 fn push_pair(args: &mut Vec<OsString>, name: &str, value: &str) {
@@ -710,6 +759,7 @@ fn main() -> eframe::Result {
                 .or_default()
                 .push("Noto Sans TC".to_owned());
             creation_context.egui_ctx.set_fonts(fonts);
+            apply_style(&creation_context.egui_ctx);
             Ok(Box::new(OneeUi::default()))
         }),
     )

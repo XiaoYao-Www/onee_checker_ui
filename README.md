@@ -8,7 +8,7 @@
 - 驗證校驗碼：可自動依副檔名推斷算法，也可手動選擇算法與根目錄。
 - JSON 目錄清單與文字目錄樹：可選輸出位置、大小格式與時間欄位。
 - 使用 Windows 原生檔案/資料夾對話框選取工具、輸入路徑、輸出檔與驗證根目錄；也可把檔案或資料夾拖放到視窗，自動帶入輸入路徑。
-- 內建「從 GitHub 安裝核心」面板：可指定 repo、版本 tag 與安裝資料夾，直接下載 oneechk 官方 Release 的 Windows zip、解壓縮並安裝 `oneechk.exe`，完成後自動填入執行檔路徑並顯示版本。
+- 內建「從 GitHub 安裝核心」面板：可指定 repo、版本 tag 與安裝資料夾，直接下載 oneechk 官方 Release 的 Windows zip、解壓縮並安裝 `oneechk.exe`（Release 內的檔名可能是 `oneechk-<版本>.exe`，會自動辨識並改名安裝），完成後自動填入執行檔路徑並顯示版本。
 - 下載與解壓縮優先使用 Windows 內建 `curl.exe`／`tar.exe`，失敗時改用 PowerShell 的 `Invoke-WebRequest`／`Expand-Archive` 備援，沒有額外執行期依賴。
 - 內嵌 Noto Sans TC 繁體中文字型，在未安裝中文語系字型的 Windows 上也能正常顯示。
 - 子程序在背景執行，UI 不會因大型目錄計算而凍結。
@@ -21,7 +21,7 @@
 - 建置時需要 Rust stable 與網路連線下載 eframe/rfd 相依套件。
 - 執行時不需安裝 Rust 或 .NET；Release 壓縮檔內含 `oneechk-ui.exe`，另需一個 `oneechk.exe` 核心（可用內建「從 GitHub 安裝核心」下載，或按「選擇程式…」指定其他位置的核心）。
 - GitHub 安裝功能需要網路連線；離線時仍可手動指定本機的 `oneechk.exe`。
-- 隨附字型採 SIL Open Font License 1.1，授權全文見 `assets/OFL.txt`；打包時會一併複製至 `dist/NOTICE-Noto-Sans-TC.txt`。
+- 隨附字型採 SIL Open Font License 1.1，授權全文見 `assets/OFL.txt`；本機 `build-windows.ps1` 打包時會複製為 `dist/NOTICE-Noto-Sans-TC.txt`，Release 壓縮檔內則為 `OFL.txt`。
 
 ## 建置與打包
 
@@ -79,7 +79,7 @@ git push origin v0.2.0
 
 1. 以 GitHub API 查詢 release（指定 tag 查詢失敗時，會改以 tag 推測 Release 下載網址）。
 2. 下載名稱含 `windows` 與 `x86_64-pc-windows-gnu` 的 zip，並顯示下載進度。
-3. 解壓縮、找出 `oneechk.exe` 並複製到安裝資料夾。
+3. 解壓縮、找出核心執行檔（`oneechk.exe` 或 `oneechk-<版本>.exe` 等命名，也會接受壓縮檔中唯一的 exe），複製到安裝資料夾並固定命名為 `oneechk.exe`。
 4. 執行 `oneechk --version` 確認版本，並自動填入 `oneechk.exe` 路徑。
 
 安裝紀錄會保留在面板中；若 `oneechk.exe` 正在執行，請先關閉再安裝，以免檔案被鎖定。

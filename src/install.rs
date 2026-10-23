@@ -28,6 +28,7 @@ pub struct Installer {
     pub target_dir: String,
     pub status: String,
     pub log: String,
+    open: bool,
     busy: bool,
     last_error: bool,
     progress_bytes: Option<u64>,
@@ -59,6 +60,7 @@ impl Installer {
             target_dir,
             status: "可從 GitHub 下載並安裝 oneechk 核心（需要網路）。".to_owned(),
             log: String::new(),
+            open: true,
             busy: false,
             last_error: false,
             progress_bytes: None,
@@ -171,84 +173,115 @@ impl Installer {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("從 GitHub 安裝核心")
-            .default_open(true)
-            .show(ui, |ui| {
-                ui.small("從 GitHub Releases 下載 Windows 版 oneechk.exe，安裝到指定資料夾；下載需要網路。");
+        // 自行繪製可收合標題，避免 CollapsingHeader 的縮排讓欄位與上方表單錯位。
+        ui.horizontal(|ui| {
+            let (rect, arrow_response) =
+                ui.allocate_exact_size(egui::vec2(16.0, 20.0), egui::Sense::click());
+            let center = rect.center();
+            let points = if self.open {
+                vec![
+                    center + egui::vec2(-6.0, -3.0),
+                    center + egui::vec2(6.0, -3.0),
+                    center + egui::vec2(0.0, 4.0),
+                ]
+            } else {
+                vec![
+                    center + egui::vec2(-3.0, -6.0),
+                    center + egui::vec2(-3.0, 6.0),
+                    center + egui::vec2(4.0, 0.0),
+                ]
+            };
+            ui.painter().add(egui::Shape::convex_polygon(
+                points,
+                ui.visuals().text_color(),
+                egui::Stroke::NONE,
+            ));
+            let title = egui::RichText::new("從 GitHub 安裝核心")
+                .strong()
+                .size(17.0);
+            let title_response = ui.add(egui::Button::new(title).frame(false));
+            if arrow_response.clicked() || title_response.clicked() {
+                self.open = !self.open;
+            }
+        });
+        if !self.open {
+            return;
+        }
 
-                ui.horizontal(|ui| {
-                    ui.label("GitHub repo");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.repo)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("owner/repo"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label("版本 tag");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.tag)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("留空＝最新正式版；也可輸入例如 v2.0.3_Auto"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label("安裝資料夾");
-                    let width = (ui.available_width() - 230.0).max(140.0);
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.target_dir)
-                            .desired_width(width)
-                            .hint_text("例如 UI 執行檔所在資料夾"),
-                    );
-                    if ui.button("選擇資料夾…").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.target_dir = path.display().to_string();
-                        }
-                    }
-                    if ui.button("開啟資料夾").clicked() {
-                        self.open_folder();
-                    }
-                });
+        ui.small("從 GitHub Releases 下載 Windows 版核心（檔名可能是 oneechk.exe 或 oneechk-<版本>.exe），安裝到指定資料夾；下載需要網路。");
 
-                ui.horizontal(|ui| {
-                    let button = egui::Button::new(if self.busy {
-                        "安裝中…"
-                    } else {
-                        "下載並安裝"
-                    })
-                    .min_size(egui::vec2(120.0, 32.0));
-                    if ui.add_enabled(!self.busy, button).clicked() {
-                        self.start();
-                    }
-                    if self.busy {
-                        ui.spinner();
-                        if let Some(bytes) = self.progress_bytes {
-                            ui.label(format!("已下載 {:.1} MB", bytes as f64 / 1_048_576.0));
-                        }
-                    }
-                });
-
-                if self.last_error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, &self.status);
-                } else {
-                    ui.label(&self.status);
+        ui.horizontal(|ui| {
+            crate::label_cell(ui, "GitHub repo");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.repo)
+                    .desired_width(f32::INFINITY)
+                    .hint_text("owner/repo"),
+            );
+        });
+        ui.horizontal(|ui| {
+            crate::label_cell(ui, "版本 tag");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.tag)
+                    .desired_width(f32::INFINITY)
+                    .hint_text("留空＝最新正式版；也可輸入例如 v2.0.3_Auto"),
+            );
+        });
+        ui.horizontal(|ui| {
+            crate::label_cell(ui, "安裝資料夾");
+            let width = (ui.available_width() - 260.0).max(150.0);
+            ui.add(
+                egui::TextEdit::singleline(&mut self.target_dir)
+                    .desired_width(width)
+                    .hint_text("例如 UI 執行檔所在資料夾"),
+            );
+            if ui.button("選擇資料夾…").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.target_dir = path.display().to_string();
                 }
+            }
+            if ui.button("開啟資料夾").clicked() {
+                self.open_folder();
+            }
+        });
 
-                if !self.log.is_empty() {
-                    egui::CollapsingHeader::new("安裝紀錄")
-                        .default_open(self.last_error)
-                        .show(ui, |ui| {
-                            let mut log = self.log.clone();
-                            ui.add_sized(
-                                [ui.available_width(), 130.0],
-                                egui::TextEdit::multiline(&mut log)
-                                    .font(egui::TextStyle::Monospace)
-                                    .desired_width(f32::INFINITY)
-                                    .interactive(false),
-                            );
-                        });
+        ui.horizontal(|ui| {
+            let button = egui::Button::new(if self.busy {
+                "安裝中…"
+            } else {
+                "下載並安裝"
+            })
+            .min_size(egui::vec2(140.0, 34.0));
+            if ui.add_enabled(!self.busy, button).clicked() {
+                self.start();
+            }
+            if self.busy {
+                ui.spinner();
+                if let Some(bytes) = self.progress_bytes {
+                    ui.label(format!("已下載 {:.1} MB", bytes as f64 / 1_048_576.0));
                 }
-            });
+            }
+        });
+
+        if self.last_error {
+            ui.colored_label(egui::Color32::LIGHT_RED, &self.status);
+        } else {
+            ui.label(&self.status);
+        }
+
+        if !self.log.is_empty() {
+            egui::CollapsingHeader::new("安裝紀錄")
+                .default_open(self.last_error)
+                .show(ui, |ui| {
+                    let mut log = self.log.clone();
+                    ui.add_sized(
+                        [ui.available_width(), 130.0],
+                        egui::TextEdit::multiline(&mut log)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(f32::INFINITY)
+                            .interactive(false),
+                    );
+                });
+        }
     }
 
     fn open_folder(&self) {
@@ -309,8 +342,19 @@ fn install(
     let tool = extract_zip(&zip_path, &extract_dir)?;
     note(format!("解壓縮完成（{tool}）。"));
 
-    let found =
-        find_oneechk_exe(&extract_dir).ok_or_else(|| "解壓縮後找不到 oneechk.exe。".to_owned())?;
+    let found = find_core_exe(&extract_dir).ok_or_else(|| {
+        "解壓縮後找不到核心執行檔（.exe）；請確認 release 內容，或改用手動選擇 oneechk.exe。"
+            .to_owned()
+    })?;
+    if !found
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("oneechk.exe"))
+    {
+        note(format!(
+            "執行檔命名為 {}，將複製為 oneechk.exe。",
+            found.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
     note(format!("找到執行檔：{}", found.display()));
 
     fs::create_dir_all(target_dir)
@@ -577,32 +621,57 @@ fn extract_zip(zip: &Path, dest: &Path) -> Result<String, String> {
     }
 }
 
-fn find_oneechk_exe(root: &Path) -> Option<PathBuf> {
-    let mut dirs = vec![root.to_path_buf()];
-    for _ in 0..4 {
-        let mut next = Vec::new();
-        for dir in dirs {
-            let Ok(entries) = fs::read_dir(&dir) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    next.push(path);
-                } else if path
-                    .file_name()
-                    .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("oneechk.exe"))
-                {
-                    return Some(path);
-                }
-            }
-        }
-        dirs = next;
-        if dirs.is_empty() {
-            break;
-        }
+/// 在解壓縮結果中尋找核心執行檔。
+///
+/// GitHub Release 的檔名不一定是 `oneechk.exe`（例如 `oneechk-2.0.3.exe`），
+/// 因此依序接受：完全同名 → 檔名含 `oneechk` → 目錄中唯一的 exe。
+fn find_core_exe(root: &Path) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    collect_exe_files(root, 0, &mut candidates);
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort();
+
+    if let Some(exact) = candidates.iter().find(|path| {
+        path.file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("oneechk.exe"))
+    }) {
+        return Some(exact.clone());
+    }
+    if let Some(named) = candidates.iter().find(|path| {
+        path.file_name().is_some_and(|name| {
+            name.to_string_lossy()
+                .to_ascii_lowercase()
+                .contains("oneechk")
+        })
+    }) {
+        return Some(named.clone());
+    }
+    if candidates.len() == 1 {
+        return candidates.pop();
     }
     None
+}
+
+fn collect_exe_files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    if depth > 4 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_exe_files(&path, depth + 1, out);
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("exe"))
+        {
+            out.push(path);
+        }
+    }
 }
 
 fn probe_version(exe: &Path) -> String {
@@ -840,6 +909,60 @@ mod tests {
         assert!(probe_version(Path::new(r"Z:\definitely-missing-oneechk.exe")).is_empty());
     }
 
+    fn temp_case_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("oneechk-ui-find-{}-{tag}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn finds_versioned_core_exe() {
+        let dir = temp_case_dir("versioned");
+        let nested = dir.join("oneechk-2.0.3-x86_64-pc-windows-gnu");
+        fs::create_dir_all(&nested).unwrap();
+        let exe = nested.join("oneechk-2.0.3.exe");
+        fs::write(&exe, b"MZ").unwrap();
+
+        assert_eq!(find_core_exe(&dir), Some(exe));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prefers_canonical_name_over_other_exe() {
+        let dir = temp_case_dir("prefer");
+        fs::write(dir.join("oneechk-2.0.3.exe"), b"MZ").unwrap();
+        fs::write(dir.join("oneechk.exe"), b"MZ").unwrap();
+
+        let found = find_core_exe(&dir).expect("應找到執行檔");
+        assert_eq!(
+            found.file_name().unwrap().to_string_lossy(),
+            "oneechk.exe".to_owned()
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn accepts_single_unrelated_exe() {
+        let dir = temp_case_dir("single");
+        fs::write(dir.join("core.exe"), b"MZ").unwrap();
+
+        let found = find_core_exe(&dir).expect("只有一個 exe 時應接受");
+        assert!(found.ends_with("core.exe"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_multiple_unrelated_exes() {
+        let dir = temp_case_dir("ambiguous");
+        fs::write(dir.join("a.exe"), b"MZ").unwrap();
+        fs::write(dir.join("b.exe"), b"MZ").unwrap();
+
+        assert_eq!(find_core_exe(&dir), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn extracts_windows_zip_and_finds_core() {
         let has_tar = Command::new("tar.exe")
@@ -855,7 +978,8 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let source = root.join("src");
         fs::create_dir_all(&source).unwrap();
-        fs::write(source.join("oneechk.exe"), b"MZ").unwrap();
+        // 實際 release 的壓縮檔內是版本化檔名，例如 oneechk-2.0.3.exe。
+        fs::write(source.join("oneechk-2.0.3.exe"), b"MZ").unwrap();
         fs::write(source.join("README.md"), b"readme").unwrap();
         let zip = root.join("core.zip");
         let created = Command::new("tar.exe")
@@ -871,8 +995,8 @@ mod tests {
 
         let extracted = root.join("extract");
         extract_zip(&zip, &extracted).expect("解壓縮測試 zip");
-        let found = find_oneechk_exe(&extracted).expect("應能找到 oneechk.exe");
-        assert!(found.ends_with("oneechk.exe"));
+        let found = find_core_exe(&extracted).expect("應能找到版本化的核心執行檔");
+        assert!(found.ends_with("oneechk-2.0.3.exe"));
 
         let _ = fs::remove_dir_all(&root);
     }
