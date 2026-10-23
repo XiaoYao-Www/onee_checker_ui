@@ -1,0 +1,19 @@
+[package]
+name = "oneechk-ui"
+version = "0.1.0"
+edition = "2021"
+description = "Windows desktop UI for the oneechk command-line tool"
+license = "MIT"
+publish = false
+
+[workspace]
+resolver = "2"
+
+[dependencies]
+eframe = { version = "0.34.1", default-features = false, features = ["default_fonts", "glow"] }
+rfd = "0.17.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
