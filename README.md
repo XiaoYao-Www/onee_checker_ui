@@ -75,7 +75,7 @@ git push origin v0.2.0
 
 ## 從 GitHub 安裝核心
 
-「從 GitHub 安裝核心」面板預設 repo 為 `XiaoYao-Www/onee_checker`，版本 tag 留空代表最新正式版；也可輸入例如 `v2.0.2_Auto`。安裝資料夾預設為 UI 執行檔所在資料夾。按下「下載並安裝」後會：
+「從 GitHub 安裝核心」面板預設 repo 為 `XiaoYao-Www/onee_checker`，版本 tag 留空代表最新正式版；也可輸入例如 `v2.0.3_Auto`。安裝資料夾預設為 UI 執行檔所在資料夾。按下「下載並安裝」後會：
 
 1. 以 GitHub API 查詢 release（指定 tag 查詢失敗時，會改以 tag 推測 Release 下載網址）。
 2. 下載名稱含 `windows` 與 `x86_64-pc-windows-gnu` 的 zip，並顯示下載進度。

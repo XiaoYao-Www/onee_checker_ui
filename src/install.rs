@@ -189,7 +189,7 @@ impl Installer {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.tag)
                             .desired_width(f32::INFINITY)
-                            .hint_text("留空＝最新正式版；也可輸入例如 v2.0.2_Auto"),
+                            .hint_text("留空＝最新正式版；也可輸入例如 v2.0.3_Auto"),
                     );
                 });
                 ui.horizontal(|ui| {
