@@ -1,0 +1,173 @@
+name: Build & Release
+
+# 推送 v* 標籤即自動編譯並發布 Windows 版；也可在 Actions 頁面手動觸發。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 同一時間只允許一個發布流程，避免競爭同一個標籤
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ----------------------------
+  # 1. 檢查版本與標籤 (Check Version)
+  # ----------------------------
+  check_version:
+    name: Check Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: 檢出程式碼 (Checkout)
+        uses: actions/checkout@v4
+
+      - name: 讀取 Cargo.toml 版本 (Get Version)
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(grep -E '^version\s*=' Cargo.toml | head -1 | sed 's/version *= *"\(.*\)"/\1/')
+          if [ -z "$VERSION" ]; then
+            echo "無法從 Cargo.toml 解析版本號" >&2
+            exit 1
+          fi
+          echo "Detected version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 確認標籤與版本一致 (Verify Tag)
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            EXPECTED="v${{ steps.get_version.outputs.version }}"
+            if [ "$GITHUB_REF_NAME" != "$EXPECTED" ]; then
+              echo "::error::標籤 $GITHUB_REF_NAME 與 Cargo.toml 版本不一致，應為 $EXPECTED"
+              exit 1
+            fi
+            echo "標籤 $GITHUB_REF_NAME 與版本相符。"
+          else
+            echo "手動觸發：使用 Cargo.toml 版本 ${{ steps.get_version.outputs.version }}。"
+          fi
+
+  # ----------------------------
+  # 2. 建置與打包 (Build & Package)
+  # ----------------------------
+  build:
+    name: Build Windows
+    needs: check_version
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: 檢出程式碼 (Checkout)
+        uses: actions/checkout@v4
+
+      - name: 安裝 Rust 工具鏈 (Install Rust)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 設定 Cargo 快取 (Cache)
+        uses: swatinem/rust-cache@v2
+
+      - name: 檢查格式 (Format Check)
+        run: cargo fmt --all -- --check
+
+      - name: 靜態檢查 (Clippy)
+        run: cargo clippy --all-targets --locked
+
+      - name: 執行測試 (Test)
+        run: cargo test --release --locked
+
+      - name: 編譯 (Build)
+        run: cargo build --release --locked
+
+      - name: 打包壓縮 (Package)
+        shell: pwsh
+        run: |
+          $version = "${{ needs.check_version.outputs.version }}"
+          $name = "oneechk-ui-$version-x86_64-pc-windows-msvc"
+          $dist = "dist/$name"
+          New-Item -ItemType Directory -Path $dist -Force | Out-Null
+
+          Copy-Item "target/release/oneechk-ui.exe" "$dist/oneechk-ui.exe"
+          Copy-Item README.md, LICENSE, assets/OFL.txt "$dist/"
+
+          Compress-Archive -Path "$dist/*" -DestinationPath "dist/$name.zip" -Force
+          Get-ChildItem dist
+
+      - name: 上傳構建產物 (Upload Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-windows
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # ----------------------------
+  # 3. 發布 Release (Create Release)
+  # ----------------------------
+  release:
+    name: Create Release
+    needs: [check_version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 檢出程式碼 (Checkout)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 下載構建產物 (Download Artifacts)
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 產生變更日誌 (Generate Changelog)
+        id: changelog
+        shell: bash
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "Last tag: $LAST_TAG"
+
+          if [ -z "$LAST_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" | tr -d '\r')
+          else
+            CHANGELOG=$(git log "$LAST_TAG"..HEAD --pretty=format:"- %s (%h)" | tr -d '\r')
+          fi
+
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="無變更內容"
+          fi
+
+          {
+            echo "body<<EOF"
+            echo "$CHANGELOG"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: 建立 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check_version.outputs.version }}
+          name: "Onee Checker UI v${{ needs.check_version.outputs.version }}"
+          body: |
+            ### 變更內容
+            ${{ steps.changelog.outputs.body }}
+
+            ### 下載
+            解壓縮後直接執行 `oneechk-ui.exe`；需要搭配 `oneechk.exe` 核心，
+            可在程式內「從 GitHub 安裝核心」面板下載，或從
+            [onee_checker releases](https://github.com/XiaoYao-Www/onee_checker/releases) 取得。
+          files: artifacts/*.zip
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

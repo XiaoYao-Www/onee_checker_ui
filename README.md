@@ -19,7 +19,7 @@
 
 - Windows 10 或更新版本。
 - 建置時需要 Rust stable 與網路連線下載 eframe/rfd 相依套件。
-- 執行時不需安裝 Rust 或 .NET；發佈資料夾需同時包含 `oneechk-ui.exe` 與 `oneechk.exe`。也可以在 UI 內瀏覽選取其他位置的 `oneechk.exe`。
+- 執行時不需安裝 Rust 或 .NET；Release 壓縮檔內含 `oneechk-ui.exe`，另需一個 `oneechk.exe` 核心（可用內建「從 GitHub 安裝核心」下載，或按「選擇程式…」指定其他位置的核心）。
 - GitHub 安裝功能需要網路連線；離線時仍可手動指定本機的 `oneechk.exe`。
 - 隨附字型採 SIL Open Font License 1.1，授權全文見 `assets/OFL.txt`；打包時會一併複製至 `dist/NOTICE-Noto-Sans-TC.txt`。
 
@@ -47,6 +47,25 @@
 cargo build --release --manifest-path .\Cargo.toml
 ```
 
+## 自動建置與發布（GitHub Actions）
+
+推送 `v*` 標籤後，`.github/workflows/release.yml` 會自動在 `windows-latest` 上執行格式檢查、Clippy、測試、`cargo build --release --locked`，打包成 `oneechk-ui-<版本>-x86_64-pc-windows-msvc.zip`，並建立 GitHub Release 上傳壓縮檔。手動觸發可在 Actions 頁面使用 `workflow_dispatch`。
+
+發布新版本：
+
+```powershell
+# 1. 更新 Cargo.toml 的 version（Workflow 會驗證標籤與版本一致）
+# 2. 提交並推送 main
+git add -A
+git commit -m "chore: 發佈 v0.2.0"
+git push origin main
+# 3. 建立並推送標籤，觸發發布
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+`.github/workflows/ci.yml` 會在推送 `main` 與 Pull Request 時執行相同的格式、Clippy 與測試檢查。
+
 ## 使用方式
 
 1. 開啟 `oneechk-ui.exe`。若同一資料夾有 `oneechk.exe`，程式會自動選用；否則按「選擇程式…」指定，或使用「從 GitHub 安裝核心」。
@@ -72,6 +91,7 @@ onee_checker_ui/
 ├── Cargo.toml          # 獨立 Cargo workspace
 ├── build-windows.ps1   # 建置並將 CLI 與 UI 打包到 dist/
 ├── assets/             # 內嵌中文字型與字型授權
+├── .github/workflows/  # CI 與 Release 自動化
 └── src/
     ├── main.rs         # Windows 桌面介面與子程序調用
     └── install.rs      # GitHub Releases 下載與安裝邏輯
