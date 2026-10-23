@@ -38,7 +38,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: 靜態檢查 (Clippy)
-        run: cargo clippy --all-targets --locked
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: 執行測試 (Test)
         run: cargo test --release --locked
