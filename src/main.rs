@@ -6,7 +6,10 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 
+mod install;
+
 use eframe::egui;
+use install::Installer;
 use rfd::FileDialog;
 
 const ALGORITHMS: &[&str] = &[
@@ -84,6 +87,7 @@ struct OneeUi {
     status: String,
     validation_error: Option<String>,
     command_preview: String,
+    installer: Installer,
 }
 
 impl Default for OneeUi {
@@ -92,7 +96,10 @@ impl Default for OneeUi {
             .ok()
             .and_then(|exe| exe.parent().map(|parent| parent.join("oneechk.exe")))
             .filter(|path| path.is_file())
-            .map_or_else(|| "oneechk.exe".to_owned(), |path| path.display().to_string());
+            .map_or_else(
+                || "oneechk.exe".to_owned(),
+                |path| path.display().to_string(),
+            );
 
         Self {
             exe_path: sibling_exe,
@@ -116,13 +123,16 @@ impl Default for OneeUi {
             status: "選擇命令並指定輸入路徑。".to_owned(),
             validation_error: None,
             command_preview: String::new(),
+            installer: Installer::new(),
         }
     }
 }
 
 impl OneeUi {
     fn pick_executable(&mut self) {
-        if let Some(path) = FileDialog::new().add_filter("Windows 應用程式", &["exe"]).pick_file()
+        if let Some(path) = FileDialog::new()
+            .add_filter("Windows 應用程式", &["exe"])
+            .pick_file()
         {
             self.exe_path = path.display().to_string();
         }
@@ -157,7 +167,10 @@ impl OneeUi {
     fn pick_output(&mut self) {
         let (name, extension) = match self.command {
             CommandKind::Hash => {
-                let algorithm = self.selected_algorithms.first().map_or("sha256", String::as_str);
+                let algorithm = self
+                    .selected_algorithms
+                    .first()
+                    .map_or("sha256", String::as_str);
                 (format!("checksums.{algorithm}"), algorithm.to_owned())
             }
             CommandKind::Verify => (String::new(), "txt".to_owned()),
@@ -196,7 +209,12 @@ impl OneeUi {
                     return Err("指定單一輸出檔時只能選擇一種演算法；多種演算法請清除輸出檔欄位，讓 oneechk 分別產生清單。".to_owned());
                 }
                 if !self.length.trim().is_empty() {
-                    if !self.length.trim().parse::<u16>().is_ok_and(|value| value > 0) {
+                    if !self
+                        .length
+                        .trim()
+                        .parse::<u16>()
+                        .is_ok_and(|value| value > 0)
+                    {
                         return Err("輸出長度必須是 1 到 65535 之間的整數 bytes。".to_owned());
                     }
                     if self
@@ -329,7 +347,9 @@ impl OneeUi {
                     Some(0) => "完成：oneechk 回傳成功。".to_owned(),
                     Some(1) => "驗證未通過：至少一筆雜湊不匹配。".to_owned(),
                     Some(code) => format!("執行失敗：oneechk 回傳退出碼 {code}。"),
-                    None => result.error.unwrap_or_else(|| "oneechk 無法啟動。".to_owned()),
+                    None => result
+                        .error
+                        .unwrap_or_else(|| "oneechk 無法啟動。".to_owned()),
                 };
                 self.receiver = None;
             }
@@ -342,15 +362,28 @@ impl OneeUi {
         }
     }
 
+    fn handle_dropped_files(&mut self, ctx: &egui::Context) {
+        if self.is_running {
+            return;
+        }
+        let dropped = ctx.input(|input| input.raw.dropped_files.clone());
+        if let Some(path) = dropped.into_iter().find_map(|file| file.path) {
+            self.input_path = path.display().to_string();
+            self.status = format!("已帶入拖放路徑：{}", self.input_path);
+        }
+    }
+
     fn draw_executable_picker(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("oneechk.exe");
-            ui.add(egui::TextEdit::singleline(&mut self.exe_path).desired_width(f32::INFINITY));
+            path_text(ui, &mut self.exe_path, "選擇或貼上 oneechk.exe 路徑", 130.0);
             if ui.button("選擇程式…").clicked() {
                 self.pick_executable();
             }
         });
-        ui.small("支援選取專案編譯的 oneechk.exe，或其他相容版本。");
+        ui.small(
+            "支援選取專案編譯的 oneechk.exe，或其他相容版本；也可使用下方的 GitHub 安裝功能。",
+        );
     }
 
     fn draw_command_tabs(&mut self, ui: &mut egui::Ui) {
@@ -368,11 +401,12 @@ impl OneeUi {
             } else {
                 "輸入路徑"
             });
-            ui.add(
-                egui::TextEdit::singleline(&mut self.input_path)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("選擇檔案或目錄"),
-            );
+            let reserved = if self.command == CommandKind::Hash {
+                250.0
+            } else {
+                130.0
+            };
+            path_text(ui, &mut self.input_path, "選擇檔案或目錄", reserved);
             match self.command {
                 CommandKind::Hash => {
                     if ui.button("選擇檔案…").clicked() {
@@ -394,15 +428,17 @@ impl OneeUi {
                 }
             }
         });
+        ui.small("瀏覽按鈕會開啟 Windows 檔案選擇器；也可把檔案或資料夾拖放到視窗帶入輸入路徑。");
     }
 
     fn draw_output_picker(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("輸出檔案");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.output_path)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("留空使用 oneechk 預設檔名"),
+            path_text(
+                ui,
+                &mut self.output_path,
+                "留空使用 oneechk 預設檔名",
+                130.0,
             );
             if ui.button("另存新檔…").clicked() {
                 self.pick_output();
@@ -412,21 +448,26 @@ impl OneeUi {
 
     fn draw_hash_options(&mut self, ui: &mut egui::Ui) {
         ui.label("雜湊演算法（可複選；留一項即可產生單一校驗碼檔）");
-        egui::Grid::new("algorithm_grid").num_columns(4).show(ui, |ui| {
-            for (index, algorithm) in ALGORITHMS.iter().enumerate() {
-                let mut selected = self.selected_algorithms.iter().any(|item| item == algorithm);
-                if ui.checkbox(&mut selected, *algorithm).changed() {
-                    if selected {
-                        self.selected_algorithms.push((*algorithm).to_owned());
-                    } else {
-                        self.selected_algorithms.retain(|item| item != algorithm);
+        egui::Grid::new("algorithm_grid")
+            .num_columns(4)
+            .show(ui, |ui| {
+                for (index, algorithm) in ALGORITHMS.iter().enumerate() {
+                    let mut selected = self
+                        .selected_algorithms
+                        .iter()
+                        .any(|item| item == algorithm);
+                    if ui.checkbox(&mut selected, *algorithm).changed() {
+                        if selected {
+                            self.selected_algorithms.push((*algorithm).to_owned());
+                        } else {
+                            self.selected_algorithms.retain(|item| item != algorithm);
+                        }
+                    }
+                    if (index + 1) % 4 == 0 {
+                        ui.end_row();
                     }
                 }
-                if (index + 1) % 4 == 0 {
-                    ui.end_row();
-                }
-            }
-        });
+            });
         ui.horizontal(|ui| {
             ui.label("可變長度（bytes）");
             ui.add(
@@ -447,7 +488,9 @@ impl OneeUi {
             ui.add_space(16.0);
             ui.label("執行緒數");
             ui.add(
-                egui::TextEdit::singleline(&mut self.threads).desired_width(80.0).hint_text("自動"),
+                egui::TextEdit::singleline(&mut self.threads)
+                    .desired_width(80.0)
+                    .hint_text("自動"),
             );
         });
     }
@@ -474,11 +517,7 @@ impl OneeUi {
         });
         ui.horizontal(|ui| {
             ui.label("驗證根目錄");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.root_path)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("留空使用校驗碼檔所在目錄"),
-            );
+            path_text(ui, &mut self.root_path, "留空使用校驗碼檔所在目錄", 130.0);
             if ui.button("選擇目錄…").clicked() {
                 self.pick_root_folder();
             }
@@ -489,14 +528,13 @@ impl OneeUi {
     fn draw_txt_options(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("大小格式");
-            egui::ComboBox::from_id_salt("tree_size").selected_text(&self.tree_size).show_ui(
-                ui,
-                |ui| {
+            egui::ComboBox::from_id_salt("tree_size")
+                .selected_text(&self.tree_size)
+                .show_ui(ui, |ui| {
                     for value in ["不顯示", "二進位", "十進位", "原始位元組"] {
                         ui.selectable_value(&mut self.tree_size, value.to_owned(), value);
                     }
-                },
-            );
+                });
             ui.checkbox(&mut self.show_modified, "顯示修改時間");
             ui.checkbox(&mut self.show_created, "顯示建立時間");
         });
@@ -504,8 +542,12 @@ impl OneeUi {
 
     fn draw_run_button(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            let button = egui::Button::new(if self.is_running { "執行中…" } else { "執行" })
-                .min_size(egui::vec2(120.0, 38.0));
+            let button = egui::Button::new(if self.is_running {
+                "執行中…"
+            } else {
+                "執行"
+            })
+            .min_size(egui::vec2(120.0, 38.0));
             if ui.add_enabled(!self.is_running, button).clicked() {
                 self.start();
             }
@@ -542,22 +584,26 @@ impl OneeUi {
                 );
             });
         }
-        egui::CollapsingHeader::new("標準輸出 stdout").default_open(true).show(ui, |ui| {
-            ui.add_sized(
-                [ui.available_width(), 150.0],
-                egui::TextEdit::multiline(&mut self.stdout)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(f32::INFINITY),
-            );
-        });
-        egui::CollapsingHeader::new("錯誤與狀態 stderr").default_open(true).show(ui, |ui| {
-            ui.add_sized(
-                [ui.available_width(), 110.0],
-                egui::TextEdit::multiline(&mut self.stderr)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(f32::INFINITY),
-            );
-        });
+        egui::CollapsingHeader::new("標準輸出 stdout")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.add_sized(
+                    [ui.available_width(), 150.0],
+                    egui::TextEdit::multiline(&mut self.stdout)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY),
+                );
+            });
+        egui::CollapsingHeader::new("錯誤與狀態 stderr")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.add_sized(
+                    [ui.available_width(), 110.0],
+                    egui::TextEdit::multiline(&mut self.stderr)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY),
+                );
+            });
     }
 }
 
@@ -565,6 +611,11 @@ impl eframe::App for OneeUi {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.poll_result(&ctx);
+        if let Some(path) = self.installer.poll() {
+            self.exe_path = path.display().to_string();
+            self.status = format!("核心已安裝：{}", self.exe_path);
+        }
+        self.handle_dropped_files(&ctx);
         ui.horizontal(|ui| {
             ui.heading("Onee Checker 桌面工具");
             ui.label("使用圖形介面執行 oneechk.exe");
@@ -573,6 +624,8 @@ impl eframe::App for OneeUi {
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             self.draw_executable_picker(ui);
+            ui.add_space(2.0);
+            self.installer.draw(ui);
             ui.separator();
             self.draw_command_tabs(ui);
             ui.separator();
@@ -603,10 +656,19 @@ impl eframe::App for OneeUi {
             self.draw_results(ui);
         });
 
-        if self.is_running {
+        if self.is_running || self.installer.is_busy() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
     }
+}
+
+fn path_text(ui: &mut egui::Ui, value: &mut String, hint: &str, reserved: f32) {
+    let width = (ui.available_width() - reserved).max(140.0);
+    ui.add(
+        egui::TextEdit::singleline(value)
+            .desired_width(width)
+            .hint_text(hint),
+    );
 }
 
 fn push_pair(args: &mut Vec<OsString>, name: &str, value: &str) {
