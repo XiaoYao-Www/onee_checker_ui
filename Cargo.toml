@@ -1,6 +1,6 @@
 [package]
 name = "oneechk-ui"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Windows desktop UI for the oneechk command-line tool"
 license = "MIT"

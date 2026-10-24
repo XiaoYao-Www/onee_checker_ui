@@ -77,6 +77,7 @@ struct OneeUi {
     buffer: String,
     threads: String,
     tree_size: String,
+    output_mode: String,
     show_modified: bool,
     show_created: bool,
     is_running: bool,
@@ -113,6 +114,7 @@ impl Default for OneeUi {
             buffer: "1M".to_owned(),
             threads: String::new(),
             tree_size: "不顯示".to_owned(),
+            output_mode: "文字".to_owned(),
             show_modified: false,
             show_created: false,
             is_running: false,
@@ -235,6 +237,9 @@ impl OneeUi {
                 if !self.output_path.trim().is_empty() {
                     push_pair(&mut args, "--output", self.output_path.trim());
                 }
+                if self.output_mode == "二進位" {
+                    args.push(OsString::from("--binary"));
+                }
             }
             CommandKind::Verify => {
                 if self.algorithm != "自動判斷（依副檔名）" {
@@ -244,6 +249,9 @@ impl OneeUi {
                     push_pair(&mut args, "--root", self.root_path.trim());
                 }
                 self.append_common_options(&mut args);
+                if self.output_mode == "二進位" {
+                    args.push(OsString::from("--binary"));
+                }
             }
             CommandKind::Json => {
                 if !self.output_path.trim().is_empty() {
@@ -480,6 +488,17 @@ impl OneeUi {
             );
             ui.label("僅 SHAKE 與 BLAKE3 支援");
         });
+        ui.horizontal(|ui| {
+            label_cell(ui, "清單模式");
+            egui::ComboBox::from_id_salt("hash_mode")
+                .selected_text(&self.output_mode)
+                .show_ui(ui, |ui| {
+                    for value in ["文字", "二進位"] {
+                        ui.selectable_value(&mut self.output_mode, value.to_owned(), value);
+                    }
+                });
+            ui.label("二進位＝<hash> *<path>（GNU sha256sum -b）");
+        });
         self.draw_common_options(ui);
     }
 
@@ -525,6 +544,17 @@ impl OneeUi {
             if ui.button("選擇目錄…").clicked() {
                 self.pick_root_folder();
             }
+        });
+        ui.horizontal(|ui| {
+            label_cell(ui, "清單模式");
+            egui::ComboBox::from_id_salt("verify_mode")
+                .selected_text(&self.output_mode)
+                .show_ui(ui, |ui| {
+                    for value in ["文字", "二進位"] {
+                        ui.selectable_value(&mut self.output_mode, value.to_owned(), value);
+                    }
+                });
+            ui.label("僅影響 --format shasum／bsd 的重新輸出");
         });
         self.draw_common_options(ui);
     }
@@ -763,4 +793,57 @@ fn main() -> eframe::Result {
             Ok(Box::new(OneeUi::default()))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ui_with(command: CommandKind, input: &str) -> OneeUi {
+        OneeUi {
+            command,
+            input_path: input.to_owned(),
+            ..OneeUi::default()
+        }
+    }
+
+    fn joined(args: &[OsString]) -> String {
+        args.iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn hash_default_mode_is_text() {
+        let ui = ui_with(CommandKind::Hash, "C:/data");
+        let args = ui.validate_and_build_args().expect("應能組出參數");
+        assert!(!joined(&args).contains("--binary"), "預設不應帶 --binary");
+    }
+
+    #[test]
+    fn hash_binary_mode_adds_flag() {
+        let mut ui = ui_with(CommandKind::Hash, "C:/data");
+        ui.output_mode = "二進位".to_owned();
+        let args = ui.validate_and_build_args().expect("應能組出參數");
+        assert!(
+            joined(&args).contains("--binary"),
+            "二進位模式應帶 --binary"
+        );
+    }
+
+    #[test]
+    fn verify_binary_mode_adds_flag() {
+        let mut ui = ui_with(CommandKind::Verify, "C:/data/checksums.sha256");
+        ui.output_mode = "二進位".to_owned();
+        let args = ui.validate_and_build_args().expect("應能組出參數");
+        assert!(joined(&args).contains("--binary"), "verify 也應帶 --binary");
+    }
+
+    #[test]
+    fn verify_default_mode_has_no_flag() {
+        let ui = ui_with(CommandKind::Verify, "C:/data/checksums.sha256");
+        let args = ui.validate_and_build_args().expect("應能組出參數");
+        assert!(!joined(&args).contains("--binary"));
+    }
 }
