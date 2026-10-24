@@ -383,20 +383,29 @@ fn replace_file(source: &Path, installed: &Path) -> Result<(), String> {
         )
     })?;
 
-    match fs::rename(&staged, installed) {
-        Ok(()) => Ok(()),
-        Err(rename_error) => {
-            // 少數情況下改名會被檔案鎖或防毒軟體阻擋，退回直接複製一次。
-            let direct = fs::copy(&staged, installed);
-            let _ = fs::remove_file(&staged);
-            direct.map(|_| ()).map_err(|error| {
-                format!(
-                    "無法寫入 {}：{error}（改名失敗：{rename_error}）。若 oneechk.exe 正在執行，請先關閉再試。",
-                    installed.display()
-                )
-            })
+    // Windows 上 oneechk.exe 可能仍被執行中的行程或防毒軟體鎖住，改名會暫時失敗；
+    // 以 200ms 間隔重試 5 次，全部失敗才退回直接複製。
+    let mut rename_error = String::new();
+    for attempt in 0..5 {
+        match fs::rename(&staged, installed) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                rename_error = error.to_string();
+                if attempt < 4 {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+            }
         }
     }
+
+    let direct = fs::copy(&staged, installed);
+    let _ = fs::remove_file(&staged);
+    direct.map(|_| ()).map_err(|error| {
+        format!(
+            "無法替換 {}：{error}（改名重試 5 次仍失敗：{rename_error}）。若 oneechk.exe 正在執行中，請先關閉該程式再重試。",
+            installed.display()
+        )
+    })
 }
 
 fn fetch_release(
