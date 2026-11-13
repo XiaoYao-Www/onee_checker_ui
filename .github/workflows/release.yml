@@ -30,7 +30,7 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: 檢出程式碼 (Checkout)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 讀取 Cargo.toml 版本 (Get Version)
         id: get_version
@@ -68,7 +68,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: 檢出程式碼 (Checkout)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安裝 Rust 工具鏈 (Install Rust)
         uses: dtolnay/rust-toolchain@stable
@@ -105,7 +105,7 @@ jobs:
           Get-ChildItem dist
 
       - name: 上傳構建產物 (Upload Artifact)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifact-windows
           path: dist/*.zip
@@ -121,12 +121,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: 檢出程式碼 (Checkout)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: 下載構建產物 (Download Artifacts)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -155,7 +155,7 @@ jobs:
           } >> $GITHUB_OUTPUT
 
       - name: 建立 GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.check_version.outputs.version }}
           name: "Onee Checker UI v${{ needs.check_version.outputs.version }}"
